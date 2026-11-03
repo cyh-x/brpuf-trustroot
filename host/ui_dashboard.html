@@ -80,25 +80,30 @@ footer button.atk:hover{border-color:var(--bad);background:#fff5f5}
 <footer>
   <button onclick="run('parallel')">▶ 并行认证</button>
   <button onclick="run('consume')">🎴 消耗制认证</button>
+  <button onclick="refreshNodes()">⟳ 刷新节点</button>
   <button class="atk" onclick="run('replay')">🔁 重放攻击</button>
   <button class="atk" onclick="run('impersonate')">🧠 建模预测攻击</button>
   <button class="atk" onclick="run('forge')">🎲 伪造攻击</button>
 </footer>
 <script>
-const DEVS=['DEV2','DEV5','DEV1'];
-function nodeHtml(d){return `<div class="node" id="nd-${d}">
- <div class="row1"><span class="nm">${d} <span id="bd-${d}" style="color:var(--acc)"></span></span><span class="st-tag" id="tag-${d}">已注册</span></div>
- <div class="fp" id="fp-${d}">指纹读取中…</div>
- <div class="meta"><span>nerr均值 <b id="ne-${d}">–</b></span><span>延迟 <b id="ms-${d}">–</b></span></div>
- <div class="meta"><span>CRP 余量 <b id="pool-${d}">–</b></span><span style="cursor:pointer;color:var(--acc)" onclick="resetPool('${d}')">↺ 重置</span></div>
+let NODES=[];               // [{disp,slot,board,fp,pool_total,pool_used,...}]
+function nodeHtml(n){return `<div class="node" id="nd-${n.disp}">
+ <div class="row1"><span class="nm">${n.disp}${n.board?` <span style="color:var(--acc)">· ${n.board}号板</span>`:''}</span><span class="st-tag" id="tag-${n.disp}">已注册</span></div>
+ <div class="fp" id="fp-${n.disp}">${n.fp?('PUF指纹 '+n.fp.slice(0,8)+'…'):''}</div>
+ <div class="meta"><span>nerr均值 <b id="ne-${n.disp}">–</b></span><span>延迟 <b id="ms-${n.disp}">–</b></span></div>
+ <div class="meta"><span>CRP 余量 <b id="pool-${n.disp}">–</b></span><span style="cursor:pointer;color:var(--acc)" onclick="resetPool('${n.board}','${n.disp}')">↺ 重置</span></div>
 </div>`}
-async function resetPool(d){
- if(!confirm('重置 '+d+' 的已消耗 CRP 记录? (恢复满池, 演示用)'))return;
- const r=await (await fetch('/api/pool/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dev:d})})).json();
- if(r[d]&&r[d].ok){loadStats();addEv({kind:'scenario',msg:d+' CRP 池已重置 → 剩余 '+r[d].pool_total+'/'+r[d].pool_total});}
- else addEv({kind:'scenario',msg:d+' 重置失败: '+(r[d]?r[d].err:'未知')});
+async function resetPool(board,disp){
+ const label=disp+'（'+board+'号板）';
+ if(!confirm('重置 '+label+' 的已消耗 CRP 记录? (恢复满池, 演示用)'))return;
+ const r=await (await fetch('/api/pool/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dev:board})})).json();
+ if(r[board]&&r[board].ok){loadStats();addEv({kind:'scenario',msg:label+' CRP 池已重置 → 剩余 '+r[board].pool_total+'/'+r[slot].pool_total});}
+ else addEv({kind:'scenario',msg:label+' 重置失败: '+(r[board]?r[board].err:'未知')});
 }
-document.getElementById('nodes').innerHTML=DEVS.map(nodeHtml).join('');
+async function refreshNodes(){
+ try{ await fetch('/api/refresh',{method:'POST'}); }catch(e){}
+ loadStats();
+}
 function addEv(ev){
  const w=document.getElementById('flowwrap');
  const el=document.createElement('div');
@@ -127,22 +132,30 @@ function run(name){fetch('/api/run/'+name,{method:'POST'})}
 async function loadStats(){
  try{
   const s=await (await fetch('/api/stats')).json();
-  let h='';
-  const tot=(s.night&&s.night.total)||DEVS.reduce((a,d)=>a+(s[d]?.auth||0),0);
-  const nb=(s.night&&s.night.boards)||'';
-  h+=`<div class="st"><div class="lbl">整夜认证成功率（${nb}）</div><div class="val">100.00% <small>${tot.toLocaleString()} 次 · 零失败</small></div><div class="bar"><i style="width:100%"></i></div></div>`;
-  for(const d of DEVS){if(!s[d])continue;
-   document.getElementById('bd-'+d).textContent=s[d].board?('· '+s[d].board+'号板'):'';
-   document.getElementById('fp-'+d).textContent=s[d].fp?('PUF指纹 '+s[d].fp.slice(0,8)+'…'):'';
-   document.getElementById('ne-'+d).textContent=(s[d].nerr_mean!=null)?s[d].nerr_mean.toFixed(2):'–';
-   document.getElementById('ms-'+d).textContent=(s[d].ms_mean!=null)?s[d].ms_mean+'ms':'–';
-   if(s[d].pool_total!==undefined)
-    document.getElementById('pool-'+d).textContent=(s[d].pool_total-s[d].pool_used).toLocaleString()+' / '+s[d].pool_total.toLocaleString();
+  const nodes=s.nodes||[];
+  // 卡片按节点重建 (仅当节点集合/顺序变化时重建, 避免闪灯被清)
+  const sig=nodes.map(n=>n.disp+n.slot).join('|');
+  if(sig!==window.__nodeSig){
+   window.__nodeSig=sig;
+   document.getElementById('nodes').innerHTML=nodes.length?nodes.map(nodeHtml).join('')
+     :'<div style="color:var(--dim);padding:8px">无在线节点<br><small>上电后点“刷新节点”</small></div>';
   }
+  for(const n of nodes){
+   const ne=document.getElementById('ne-'+n.disp), ms=document.getElementById('ms-'+n.disp),
+         po=document.getElementById('pool-'+n.disp);
+   if(!ne)continue;
+   ne.textContent=(n.nerr_mean!=null)?n.nerr_mean.toFixed(2):'–';
+   ms.textContent=(n.ms_mean!=null)?n.ms_mean+'ms':'–';
+   po.textContent=(n.pool_total!==undefined)?((n.pool_total-n.pool_used).toLocaleString()+' / '+n.pool_total.toLocaleString()):'–';
+  }
+  let h='';
+  const tot=(s.night&&s.night.total)||0, nb=(s.night&&s.night.boards)||'';
+  h+=`<div class="st"><div class="lbl">在线节点</div><div class="val">${nodes.length} <small>块 · 每块均可独立认证</small></div></div>`;
+  h+=`<div class="st"><div class="lbl">整夜认证成功率（${nb}）</div><div class="val">100.00% <small>${tot.toLocaleString()} 次 · 零失败</small></div><div class="bar"><i style="width:100%"></i></div></div>`;
   h+=`<div class="st"><div class="lbl">攻击拦截</div><div class="val" style="color:var(--bad)">0 / 605,300</div><div class="lbl">重放·冒充·伪造(三模型)</div></div>`;
   h+=`<div class="st"><div class="lbl">BCH 纠错容量 t=18</div><div class="val">实测最深 10<small>位 · 最差余量 1.8×</small></div></div>`;
   h+=`<div class="st"><div class="lbl">密钥状态</div><div class="val" style="color:var(--ok)">永不出设备</div><div class="lbl">helper 公开数据 71B/次</div></div>`;
-  {let pt=0,pu=0;for(const d of DEVS){if(s[d]&&s[d].pool_total!==undefined){pt+=s[d].pool_total;pu+=s[d].pool_used;}}
+  {let pt=0,pu=0;for(const n of nodes){if(n.pool_total!==undefined){pt+=n.pool_total;pu+=n.pool_used;}}
    if(pt>0)h+=`<div class="st"><div class="lbl">消耗制 CRP 池</div><div class="val">${(pt-pu).toLocaleString()} <small>/ ${pt.toLocaleString()} · 已消耗 ${pu.toLocaleString()}</small></div><div class="bar"><i style="width:${(100*(pt-pu)/pt).toFixed(1)}%"></i></div></div>`;}
   document.getElementById('stats').innerHTML=h;
  }catch(e){}

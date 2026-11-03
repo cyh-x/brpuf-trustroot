@@ -1,6 +1,3 @@
-import paths
-import json
-import os
 # poolauth.py — 消耗制多挑战会话认证 (strong PUF 正统用法)
 #   v32 固件零改动: 全部基于 CMD:CRP (任意挑战单次多数决查询)
 #
@@ -18,7 +15,7 @@ import os
 import serial, time, os, json, random, threading, sys
 import boardid
 
-POOL_DIR = paths.POOL_DIR
+POOL_DIR = r'C:\spuf_build\auth_db'
 K_DEFAULT = 128
 TAU_DEFAULT = 6
 PORTS = {'DEV1': 'COM5', 'DEV2': 'COM7', 'DEV5': 'COM6'}

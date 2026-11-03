@@ -1,0 +1,46 @@
+# 位流 / 硬件产物
+*.bit
+*.dcp
+*.bin
+*.BIN
+*.elf
+*.o
+*.rpt
+*.log
+
+# Vivado / 仿真工程
+*.xpr
+*.jou
+*.str
+.xil/
+xsim.dir/
+*.wdb
+*.pb
+
+# 数据与日志（体积大 / 含设备特定信息）
+logs/
+night/
+auth_db/
+data/
+*.csv
+*.npz
+*.json
+*.jsonl
+!package.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+~$*
+.DS_Store
+
+# 一次性重构脚本
+refactor_*.py

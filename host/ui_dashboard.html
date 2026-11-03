@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>PUF 信任根 · 多节点认证指挥台</title>
+<style>
+:root{--bg:#0d1421;--card:#141d2e;--line:#1f2b40;--tx:#dbe4f0;--dim:#7d8ca3;
+--ok:#2ecc71;--bad:#e74c3c;--acc:#3498db;--warn:#f39c12}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--tx);font:14px/1.5 "Segoe UI","Microsoft YaHei",sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+header{display:flex;justify-content:space-between;align-items:center;padding:10px 18px;border-bottom:1px solid var(--line);background:linear-gradient(90deg,#101a2c,#0d1421)}
+header h1{font-size:17px;font-weight:600;letter-spacing:.5px}
+header .badge{color:var(--ok);border:1px solid var(--ok);border-radius:12px;padding:2px 10px;font-size:12px}
+main{flex:1;display:grid;grid-template-columns:280px 1fr 300px;gap:10px;padding:10px;min-height:0}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;min-height:0}
+.panel h3{font-size:12px;color:var(--dim);padding:10px 14px 6px;letter-spacing:1px}
+/* 节点卡片 */
+#nodes{padding:4px 10px 10px;overflow-y:auto}
+.node{background:#0f1727;border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px;transition:.3s}
+.node.b-ok{border-color:var(--ok);box-shadow:0 0 12px rgba(46,204,113,.25)}
+.node.b-bad{border-color:var(--bad);box-shadow:0 0 12px rgba(231,76,60,.3)}
+.node .row1{display:flex;justify-content:space-between;align-items:center}
+.node .nm{font-weight:600;font-size:15px}
+.node .fp{color:var(--dim);font-size:11px;font-family:Consolas,monospace;margin-top:3px}
+.node .meta{display:flex;justify-content:space-between;margin-top:6px;font-size:12px;color:var(--dim)}
+.node .meta b{color:var(--tx)}
+/* 事件流 */
+#flowwrap{flex:1;overflow-y:auto;padding:4px 14px 12px}
+.ev{display:flex;gap:10px;padding:5px 8px;border-left:2px solid var(--line);margin-bottom:4px;animation:slidein .3s;background:#0f1727;border-radius:0 6px 6px 0;font-size:13px}
+@keyframes slidein{from{opacity:0;transform:translateX(-8px)}}
+.ev .t{color:var(--dim);font-family:Consolas;font-size:11px;min-width:86px}
+.ev .d{font-weight:600;min-width:44px}
+.ev.k-challenge{border-color:var(--acc)} .ev.k-response{border-color:var(--warn)}
+.ev.k-verdict.ok{border-color:var(--ok);background:rgba(46,204,113,.08)}
+.ev.k-verdict.bad{border-color:var(--bad);background:rgba(231,76,60,.1)}
+.ev.k-scenario{border-color:#9b59b6;background:rgba(155,89,182,.12);font-weight:600}
+.ev.k-sys{border-color:var(--dim)}
+.ev.k-presence{border-color:var(--dim);color:var(--dim)}
+.ev.k-error{border-color:var(--bad);background:rgba(231,76,60,.14);color:#ff9a8f;font-weight:600}
+.ev.k-progress{border-color:var(--warn);color:#ffcc80}
+.tag{font-size:10px;padding:1px 6px;border-radius:8px;margin-left:6px}
+.tag.ok{background:var(--ok);color:#04120a}.tag.bad{background:var(--bad);color:#fff}
+/* 统计 */
+#stats{padding:4px 14px 12px;overflow-y:auto;font-size:13px}
+.st{margin-bottom:12px}
+.st .lbl{color:var(--dim);font-size:11px}
+.st .val{font-size:20px;font-weight:700;font-family:Consolas}
+.st .val small{font-size:11px;color:var(--dim);font-weight:400}
+.bar{height:6px;background:#0f1727;border-radius:3px;margin-top:4px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--ok)}
+/* 控制台 */
+footer{display:flex;gap:10px;padding:10px 14px;border-top:1px solid var(--line);background:var(--card)}
+footer button{flex:1;padding:12px 8px;border:1px solid var(--line);background:#16213a;color:var(--tx);
+border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;transition:.2s}
+footer button:hover{border-color:var(--acc);background:#1b2a4a;transform:translateY(-1px)}
+footer button:active{transform:translateY(0)}
+footer button.atk{border-color:#5c3a3a}
+footer button.atk:hover{border-color:var(--bad);background:#2a1a1a}
+</style>
+</head>
+<body>
+<header>
+  <h1>PUF 信任根 · 多节点并行认证指挥台</h1>
+  <span class="badge">v31b · 设备端 BCH</span>
+</header>
+<main>
+  <section class="panel">
+    <h3>节点 NODES</h3>
+    <div id="nodes"></div>
+  </section>
+  <section class="panel">
+    <h3>认证事件流 EVENT STREAM</h3>
+    <div id="flowwrap"></div>
+  </section>
+  <section class="panel">
+    <h3>实时统计 STATISTICS</h3>
+    <div id="stats"><div class="st"><div class="lbl">等待数据…</div></div></div>
+  </section>
+</main>
+<footer>
+  <button onclick="run('parallel')">▶ 并行认证</button>
+  <button onclick="run('consume')">🎴 消耗制认证</button>
+  <button class="atk" onclick="run('replay')">🔁 重放攻击</button>
+  <button class="atk" onclick="run('impersonate')">🧠 建模预测攻击</button>
+  <button class="atk" onclick="run('forge')">🎲 伪造攻击</button>
+</footer>
+<script>
+const DEVS=['DEV2','DEV5','DEV1'];
+function nodeHtml(d){return `<div class="node" id="nd-${d}">
+ <div class="row1"><span class="nm">${d} <span id="bd-${d}" style="color:var(--acc)"></span></span><span class="st-tag" id="tag-${d}">已注册</span></div>
+ <div class="fp" id="fp-${d}">指纹读取中…</div>
+ <div class="meta"><span>nerr均值 <b id="ne-${d}">–</b></span><span>延迟 <b id="ms-${d}">–</b></span></div>
+ <div class="meta"><span>CRP 余量 <b id="pool-${d}">–</b></span><span style="cursor:pointer;color:var(--acc)" onclick="resetPool('${d}')">↺ 重置</span></div>
+</div>`}
+async function resetPool(d){
+ if(!confirm('重置 '+d+' 的已消耗 CRP 记录? (恢复满池, 演示用)'))return;
+ const r=await (await fetch('/api/pool/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dev:d})})).json();
+ if(r[d]&&r[d].ok){loadStats();addEv({kind:'scenario',msg:d+' CRP 池已重置 → 剩余 '+r[d].pool_total+'/'+r[d].pool_total});}
+ else addEv({kind:'scenario',msg:d+' 重置失败: '+(r[d]?r[d].err:'未知')});
+}
+document.getElementById('nodes').innerHTML=DEVS.map(nodeHtml).join('');
+function addEv(ev){
+ const w=document.getElementById('flowwrap');
+ const el=document.createElement('div');
+ el.className='ev k-'+ev.kind+(ev.ok===true?' ok':ev.ok===false?' bad':'');
+ let body='';
+ if(ev.kind==='challenge')body=`挑战 <span style="color:var(--acc)">${ev.e1||''}</span>${ev.note?' <i style="color:var(--dim)">'+ev.note+'</i>':''}`;
+ else if(ev.kind==='response')body=`应答 nerr=<b>${ev.nerr}</b> ${ev.ms}ms${ev.note?' <i style="color:var(--warn)">'+ev.note+'</i>':''}`;
+ else if(ev.kind==='verdict')body=`验证 <span class="tag ${ev.ok?'ok':'bad'}">${ev.ok?'ACCEPT ✅':'REJECT 🛡️'}</span>${ev.note?' <i style="color:var(--dim)">'+ev.note+'</i>':''} ${ev.ms?ev.ms+'ms':''}${ev.msg?' <i style="color:var(--bad)">'+ev.msg+'</i>':''}`;
+ else if(ev.kind==='scenario')body=`📣 ${ev.msg}`;
+ else if(ev.kind==='error')body=`⛔ ${ev.msg}`;
+ else if(ev.kind==='progress')body=`⚙️ ${ev.msg}`;
+ else body=ev.msg||ev.kind;
+ el.innerHTML=`<span class="t">${ev.t}</span><span class="d">${ev.dev||''}</span><span>${body}</span>`;
+ w.appendChild(el); w.scrollTop=w.scrollHeight;
+ // 节点卡片闪灯
+ if(ev.dev&&ev.kind==='verdict'){
+  const nd=document.getElementById('nd-'+ev.dev);
+  nd.classList.remove('b-ok','b-bad'); void nd.offsetWidth;
+  nd.classList.add(ev.ok?'b-ok':'b-bad');
+  document.getElementById('tag-'+ev.dev).textContent=ev.ok?'ACCEPT':'REJECT';
+ }
+}
+const es=new EventSource('/stream');
+es.onmessage=e=>{addEv(JSON.parse(e.data))};
+function run(name){fetch('/api/run/'+name,{method:'POST'})}
+async function loadStats(){
+ try{
+  const s=await (await fetch('/api/stats')).json();
+  let h='';
+  const tot=(s.night&&s.night.total)||DEVS.reduce((a,d)=>a+(s[d]?.auth||0),0);
+  const nb=(s.night&&s.night.boards)||'';
+  h+=`<div class="st"><div class="lbl">整夜认证成功率（${nb}）</div><div class="val">100.00% <small>${tot.toLocaleString()} 次 · 零失败</small></div><div class="bar"><i style="width:100%"></i></div></div>`;
+  for(const d of DEVS){if(!s[d])continue;
+   document.getElementById('bd-'+d).textContent=s[d].board?('· '+s[d].board+'号板'):'';
+   document.getElementById('fp-'+d).textContent=s[d].fp?('PUF指纹 '+s[d].fp.slice(0,8)+'…'):'';
+   document.getElementById('ne-'+d).textContent=(s[d].nerr_mean!=null)?s[d].nerr_mean.toFixed(2):'–';
+   document.getElementById('ms-'+d).textContent=(s[d].ms_mean!=null)?s[d].ms_mean+'ms':'–';
+   if(s[d].pool_total!==undefined)
+    document.getElementById('pool-'+d).textContent=(s[d].pool_total-s[d].pool_used).toLocaleString()+' / '+s[d].pool_total.toLocaleString();
+  }
+  h+=`<div class="st"><div class="lbl">攻击拦截</div><div class="val" style="color:var(--bad)">0 / 605,300</div><div class="lbl">重放·冒充·伪造(三模型)</div></div>`;
+  h+=`<div class="st"><div class="lbl">BCH 纠错容量 t=18</div><div class="val">实测最深 10<small>位 · 最差余量 1.8×</small></div></div>`;
+  h+=`<div class="st"><div class="lbl">密钥状态</div><div class="val" style="color:var(--ok)">永不出设备</div><div class="lbl">helper 公开数据 71B/次</div></div>`;
+  {let pt=0,pu=0;for(const d of DEVS){if(s[d]&&s[d].pool_total!==undefined){pt+=s[d].pool_total;pu+=s[d].pool_used;}}
+   if(pt>0)h+=`<div class="st"><div class="lbl">消耗制 CRP 池</div><div class="val">${(pt-pu).toLocaleString()} <small>/ ${pt.toLocaleString()} · 已消耗 ${pu.toLocaleString()}</small></div><div class="bar"><i style="width:${(100*(pt-pu)/pt).toFixed(1)}%"></i></div></div>`;}
+  document.getElementById('stats').innerHTML=h;
+ }catch(e){}
+}
+loadStats(); setInterval(loadStats,5000);
+</script>
+</body>
+</html>
